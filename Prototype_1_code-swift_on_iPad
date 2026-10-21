@@ -1,0 +1,295 @@
+import SwiftUI
+import AVFoundation
+
+// MARK: - Voice Manager
+
+@MainActor
+final class SpeechManager: ObservableObject {
+
+    private let synthesizer = AVSpeechSynthesizer()
+
+    func speak(_ text: String) {
+
+        synthesizer.stopSpeaking(at: .immediate)
+
+        do {
+            try AVAudioSession.sharedInstance()
+                .setCategory(
+                    .playback,
+                    mode: .default,
+                    options: [.defaultToSpeaker]
+                )
+
+            try AVAudioSession.sharedInstance()
+                .setActive(true)
+
+        } catch {
+            print("Audio error: \(error)")
+        }
+
+        let message = AVSpeechUtterance(string: text)
+
+        message.voice = AVSpeechSynthesisVoice(
+            language: "en-US"
+        )
+
+        message.rate = 0.45
+        message.volume = 1.0
+
+        synthesizer.speak(message)
+    }
+
+    func stop() {
+        synthesizer.stopSpeaking(at: .immediate)
+    }
+}
+
+// MARK: - ClearCue Interface
+
+struct ContentView: View {
+
+    @StateObject private var speech = SpeechManager()
+
+    // 0 = Home
+    // 1 = Reminder
+    // 2 = NOW
+    // 3 = Instructions
+    // 4 = Completed
+
+    @State private var phase = 0
+    @State private var stepIndex = 0
+
+    let activity = "Study Hall"
+
+    // Short text displayed on screen
+    let keywords = [
+        "Brightspace",
+        "Math",
+        "1–4"
+    ]
+
+    // Complete spoken instructions
+    let instructions = [
+        "Open Brightspace",
+        "Choose your Math course",
+        "Complete exercises 1 to 4"
+    ]
+
+    let yellow = Color(
+        red: 1.0,
+        green: 0.85,
+        blue: 0.0
+    )
+
+    let blue = Color(
+        red: 0.0,
+        green: 0.65,
+        blue: 1.0
+    )
+
+    var body: some View {
+
+        VStack(spacing: 24) {
+
+            // Home screen only
+            if phase == 0 {
+
+                VStack(spacing: 5) {
+
+                    Text("ClearCue")
+                        .font(.system(
+                            size: 36,
+                            weight: .bold
+                        ))
+                        .foregroundColor(yellow)
+
+                    Rectangle()
+                        .fill(blue)
+                        .frame(width: 150, height: 4)
+                }
+            }
+
+            // Watch interface
+            VStack(spacing: 15) {
+
+                if phase == 0 {
+
+                    Image(systemName: "calendar")
+                        .font(.system(size: 75))
+                        .foregroundColor(blue)
+
+                } else if phase == 1 {
+
+                    Image(systemName: "books.vertical.fill")
+                        .font(.system(size: 75))
+                        .foregroundColor(.cyan)
+
+                    Text("10 MIN")
+                        .font(.system(
+                            size: 30,
+                            weight: .bold
+                        ))
+
+                } else if phase == 2 {
+
+                    Image(systemName: "books.vertical.fill")
+                        .font(.system(size: 75))
+                        .foregroundColor(.cyan)
+
+                    Text("NOW")
+                        .font(.system(
+                            size: 35,
+                            weight: .bold
+                        ))
+                        .foregroundColor(yellow)
+
+                } else if phase == 3 {
+
+                    Image(systemName: stepIcon)
+                        .font(.system(size: 75))
+                        .foregroundColor(.cyan)
+
+                    Text(keywords[stepIndex])
+                        .font(.system(
+                            size: 28,
+                            weight: .bold
+                        ))
+                        .multilineTextAlignment(.center)
+
+                } else {
+
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 75))
+                        .foregroundColor(.green)
+                }
+
+            }
+            .foregroundColor(.white)
+            .frame(width: 230, height: 250)
+            .background(Color.black)
+            .contentShape(Rectangle())
+
+            // Long press or tap
+            .gesture(
+                LongPressGesture(minimumDuration: 0.8)
+                    .exclusively(before: TapGesture())
+                    .onEnded { result in
+
+                        switch result {
+
+                        case .first(true):
+                            readInstructions()
+
+                        case .second:
+                            nextScreen()
+
+                        default:
+                            break
+                        }
+                    }
+            )
+
+            // iPad testing buttons
+            if phase == 0 {
+
+                Button("Test Reminder") {
+                    phase = 1
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(blue)
+
+            } else if phase == 1 {
+
+                Button("Simulate NOW") {
+                    phase = 2
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(blue)
+
+            } else if phase == 4 {
+
+                Button("Restart") {
+                    speech.stop()
+                    phase = 0
+                    stepIndex = 0
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(blue)
+            }
+
+        }
+        .padding()
+        .frame(
+            maxWidth: .infinity,
+            maxHeight: .infinity
+        )
+        .background(Color.black.ignoresSafeArea())
+    }
+
+    // Different icon for each instruction
+    var stepIcon: String {
+
+        switch stepIndex {
+
+        case 0:
+            return "laptopcomputer"
+
+        case 1:
+            return "plus.forwardslash.minus"
+
+        default:
+            return "pencil"
+        }
+    }
+
+    // Advance to next screen
+    func nextScreen() {
+
+        speech.stop()
+
+        if phase == 0 {
+            phase = 1
+        }
+
+        else if phase == 1 {
+            phase = 2
+        }
+
+        else if phase == 2 {
+            phase = 3
+            stepIndex = 0
+        }
+
+        else if phase == 3 {
+
+            if stepIndex < keywords.count - 1 {
+                stepIndex += 1
+            } else {
+                phase = 4
+            }
+        }
+
+        else {
+            phase = 0
+            stepIndex = 0
+        }
+    }
+
+    // Read instructions aloud
+    func readInstructions() {
+
+        if phase == 1 || phase == 2 {
+
+            // Read all steps from the notification
+            speech.speak(
+                activity + ". " +
+                instructions.joined(separator: ". ")
+            )
+
+        } else if phase == 3 {
+
+            // Read only the current step
+            speech.speak(instructions[stepIndex])
+        }
+    }
+}
