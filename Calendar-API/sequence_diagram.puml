@@ -1,0 +1,34 @@
+@startuml sequenceDiagram
+
+title Diagramme de séquence du fonctionnement de l'IPA
+
+actor "Apple Watch\n(Swift App)" as aw
+
+box "Parser API (Hosted on Render)"
+    participant "Uvicorn" as uvi
+    participant "FastAPI" as fast
+    participant "Parser Algorithm" as python
+end box
+
+note over uvi : Server boots up & opens network port
+
+aw -> uvi : POST /parse-event (Raw JSON)
+activate uvi
+
+uvi -> fast : Forward raw HTTP request
+activate fast
+
+fast -> fast : Validate JSON & unpack into Python variables
+fast -> python : parse_event(title, location, time, notes)
+activate python
+
+python --> fast : Return list of WatchPage dictionaries
+deactivate python
+
+fast --> uvi : Convert list back to JSON response
+deactivate fast
+
+uvi --> aw : HTTP 200 OK (Final JSON pages)
+deactivate uvi
+
+@enduml
